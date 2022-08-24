@@ -1,14 +1,16 @@
 # =================================================================================
-#
-#                                Hive Query Parser   Written by Tomoya Wada
-#
+#                                Metadata Generator from Hive Queries (MGHQ)
 # =================================================================================
+#
+# TODO: Add description
+# TODO: Implement error handling logic
+# TODO: Add logging feature
 #
 import sqlparse
 from io import StringIO
 import re
-import copy
-import pandas as pd
+import argparse
+from pathlib import Path
 from sqlparse.tokens import Keyword
 from sqlparse.tokens import DML
 from sqlparse.tokens import CTE
@@ -23,48 +25,62 @@ from sqlparse.sql import Parenthesis
 # --- version
 version = 0.0.1
 
-def read_sql_file(file_path:str):
-    """
-    """
-    lines = []
-    # --- load sql file
-    with open(file_path, 'r') as f:
-        for line in f:
-
-            # --- comment line in SQL
-            if line.rstrip().startswith('--'):
-                continue
-
-            # --- comment line in Python
-            elif line.rstrip().startswith('#'):
-                continue
-
-            # --- brank line
-            elif len(line.strip()) == 0:
-                continue
-
-            # --- additioanl comment line in SQL (SELECT -- this is comment)
-            elif '--' in line:
-                line = line.split('--')[0].strip()
-
-            # -- add condition here
-            #
-
-            # --- add line
-            lines.append(line.strip())
-    return '\n'.join(lines)    
-
 class Utilities:
+    """
+    This class containes utility functions.
+    """
+    def read_sql_file(self, file_path:str):
+        """
+        Read Hive SQL file. Add additional conditions if they are needed.
+
+        :param str file_path: file path 
+        """
+        # --- initialization
+        lines = []
+
+        # --- check file
+        if Path(file_path).is_file() == False:
+            print(f'error: cannot access file ({file_path})')
+            return None
+
+        # --- load sql file
+        with open(file_path, 'r') as f:
+            for line in f:
+
+                # --- comment line in SQL (i.e., starting with "--")
+                if line.rstrip().startswith('--'):
+                    continue
+
+                # # --- comment line in Python
+                # elif line.rstrip().startswith('#'):
+                #     continue
+
+                # --- brank line
+                elif len(line.strip()) == 0:
+                    continue
+
+                # --- additioanl comment at lines (SELECT -- this is comment)
+                elif '--' in line:
+                    line = line.split('--')[0].strip()
+
+                # ==== add condition here ====== 
+                # elif ****
+
+                # --- add line
+                lines.append(line.strip())
+        return '\n'.join(lines)    
 
     def parse_line(self, line:str):
         """
-        |- 7 Whitespace 
+        Parse line in _pprint_tree object (e.g., |- 7 Whitespace)
+        
+        :param str line: a line from the _pprint_tree object
         """
         # --- split line with integer(s)
-        tmp = re.split('[0-9]+', line)
+        segments = re.split('[0-9]+', line)
 
         # --- count number of string in the first portion
-        prefix_length = len(tmp[0])
+        prefix_length = len(segments[0])
 
         # --- remove first portion from the list
         line = line[prefix_length:]
@@ -133,8 +149,12 @@ class Utilities:
 
         return output.getvalue().strip().split('\n')
 
-    def parse_query(self, statement:sqlparse.sql.Statement, lines:list):
+    def merge_line_and_metadata(self, statement:sqlparse.sql.Statement, lines:list):
         """
+        Merge objects from Token (line) and _pprint_tree (metadata)
+
+        :param sqlparse.sql.Statement statement: object from sqlparse.parse function
+        :param list lines: object from sqlparse._pprint_tree function
         """
         # --- initialization
         res = []
@@ -155,63 +175,74 @@ class Utilities:
                     'value': token.value
                 }
             )
-        return res       
+        return res
 
-    def preprocess_sql_file(self, input_string:str):
+    def preprocess_sql_query(self, query:str):
+        """
+        """
+        # --- format query
+        _query = sqlparse.format(query, reindent=True, keyword_case='upper')
+
+        # --- parse query
+        statement, = sqlparse.parse(query)
+
+        # --- generate lines from _pprint_tree
+        lines = self.parse_statement(statement)
+
+        # --- get metadata and merge with lines
+        res = self.merge_line_and_metadata(statement, lines)
+
+        return res               
+
+    def preprocess_sql_queries(self, queries:str):
         """
         """
         # --- initialization
         res = []
 
         # --- process queries
-        for query in sqlparse.split(input_string):
+        for query in sqlparse.split(queries):
 
-            # --- format query
-            _query = sqlparse.format(query, reindent=True, keyword_case='upper')
-
-            # --- parse query
-            statement, = sqlparse.parse(query)
-
-            # --- generate lines from _pprint_tree
-            lines = self.parse_statement(statement)
-
-            # --- get metadata
-            _res = self.parse_query(statement, lines)
+            # --- process query
+            _res = self.preprocess_sql_query(query)
 
             # --- store result
             res.append(
                 {
-                    'query': _query,
+                    'query': query,
                     'statement': statement,
-                    'metadata': _res
+                    'metadata_lines': _res
                 }
             )
         return res
 
-class Processes:
-
-    def __init__(self):
+    def reset_switchs(self):
         """
+        Reset switchs
         """
-        # --- define tokens
-        self.tokens_considered = [
-            'create',
-            'from',
-            'group by',
-            'join',
-            'on',
-            'order by',
-            'outer join',
-            'select',
-            'where',
-            'with'
-        ]
+        self.switchs = [False] * self.num_tokens 
 
-        self.num_tokens = len(self.tokens_considered)
+    def cleanup_string(self, string:str):
+        """
+        Clean up string. Remove newline and multiple whitespace.
 
-        # --- initialization
-        self.switchs = [False] * len( self.tokens_considered )
+        :param str string: string needs to be cleaned
+        """
+        # --- define pattern
+        pattern = r'\s+'
 
+        # --- replace newline with white space
+        tmp = string.replace('\n', ' ')
+
+        # --- swap defined pattern with white space (default is multiple whiste space)
+        res = re.sub(pattern, ' ', tmp.strip())
+
+        return res
+
+class Processes(Utilities):
+    """
+    This class containes processes for each token that needs to process differently.
+    """
     def scan_known_tokens(self, token:sqlparse.sql.Token):
         """
         select, from, grouby, ordergby, with, join, where, on
@@ -683,27 +714,31 @@ class Processes:
 
         return res
 
-class ParseHiveQuery(Processes):
-
-    def reset_switchs(self):
+class GenerateMetadataHiveQueries(Processes):
+    """
+    This class contains a wrapper functions.
+    """
+    def __init__(self):
         """
         """
-        self.switchs = [False] * self.num_tokens 
+        # --- define tokens
+        self.tokens_considered = [
+            'create',
+            'from',
+            'group by',
+            'join',
+            'on',
+            'order by',
+            'outer join',
+            'select',
+            'where',
+            'with'
+        ]
 
-    def cleanup_string(self, string:str):
-        """
-        remove newline and multiple whitespace
-        """
-        # --- define pattern
-        pattern = r'\s+'
+        self.num_tokens = len(self.tokens_considered)
 
-        # --- replace newline with white space
-        tmp = string.replace('\n', ' ')
-
-        # --- swap defined pattern with white space (default is multiple whiste space)
-        res = re.sub(pattern, ' ', tmp.strip())
-
-        return res
+        # --- initialization
+        self.switchs = [False] * len( self.tokens_considered )
 
     def analyse_token(self, token:sqlparse.sql.Token):
         """
@@ -711,42 +746,42 @@ class ParseHiveQuery(Processes):
         # --- initialization
         _res = []
 
-        # --- SELECT
+        # --- select
         if self.switchs[self.tokens_considered.index('select')]:
             _res.extend(self.process_select(token))
             return _res
 
-        # --- FROM
+        # --- from
         if self.switchs[self.tokens_considered.index('from')]:
             _res.extend(self.process_from(token)) 
             return _res          
 
-        # --- GROUP BY
+        # --- group by
         if self.switchs[self.tokens_considered.index('group by')]:
             _res.extend(self.process_grouby(token))
             return _res 
 
-        # --- ORDER BY
+        # --- order by
         if self.switchs[self.tokens_considered.index('order by')]:
             _res.extend(self.process_orderby(token))
             return _res
 
-        # --- WHERE
+        # --- where
         if self.switchs[self.tokens_considered.index('where')]:
             _res.extend(self.process_where(token))
             return _res   
 
-        # --- JOIN
+        # --- join (inner join)
         if self.switchs[self.tokens_considered.index('join')]:
             _res.extend(self.process_inner_join(token))
             return _res 
 
-        # --- OUTER JOIN
+        # --- outer join
         if self.switchs[self.tokens_considered.index('outer join')]:
             _res.extend(self.process_outer_join(token))
             return _res           
 
-        # --- ON
+        # --- on
         if self.switchs[self.tokens_considered.index('on')]:
             _res.extend(self.process_on(token))
             return _res
@@ -763,7 +798,7 @@ class ParseHiveQuery(Processes):
 
         return _res
 
-    def parse_query(self, statement:sqlparse.sql.Statement):
+    def analyse_query(self, statement:sqlparse.sql.Statement):
         """
         """
         # --- initialization
@@ -781,3 +816,97 @@ class ParseHiveQuery(Processes):
             res.extend( self.analyse_token(token) )
 
         return res
+
+def generate_metadata_from_hive_query(file_path:str, idx_query:int):
+    """
+    Generate metadata from a hive query.
+
+    :param str file_path: SQL file path
+    :param int idx_query: index of target query to generate metadata
+    """
+    # --- initialization
+    parser  = GenerateMetadataHiveQueries()
+
+    # --- define parameters
+    if file_path == None:
+        file_path = './data/sample.sql'
+
+    if idx_query == None:
+        idx_query = 0
+
+    # --- preprocess
+    _res = parser.preprocess_sql_file(parser.read_sql_file(file_apth))
+
+    # --- parse query (index of "idx_query")
+    stmt = parser.analyse_query(_res[idx_query]['statement'])
+
+    # --- prepare output
+    result = {
+            'query': _res[idx]['query'],
+            'statement': stmt,
+            'metadata_lines': _res[idx]['metadata_lines'],
+            'metadata_query': parser.analyse_query(stmt)
+    }
+    return result
+
+def generate_metadata_from_hive_queries(file_path:str):
+    """
+    Generae metadta from multiple hive queries.
+
+    :param str file_path: SQL file path
+    """
+    # --- initialization
+    parser  = ParseHiveQuery()
+    results = []
+
+    # --- substitute parameter if they are None
+    if file_path == None:
+        file_path = './data/sample.sql'
+
+    # --- preprocess
+    _res = parser.read_sql_file(file_apth)
+
+    # ---
+    for idx in range(len(_res)):
+
+        stmt = _res[idx]['statement']
+
+        results.append(
+            {
+                'query': _res[idx]['query'],
+                'statement': stmt,
+                'metadata_lines': _res[idx]['metadata_lines'],
+                'metadata_query': parser.analyse_query(stmt)
+            }
+        )
+
+    return results
+
+if __name__ == '__main__':
+
+    # --- initialization
+    arg_parser = argparse.ArgumentParser()
+
+    # --- load parameters
+    arg_parser.add_argument('--file_path', type=str)
+    arg_parser.add_argument('--idx_query', type=int, default = 0)
+
+    # --- parser arguments
+    options = arg_parser.parser_args()
+
+    # --- extract options
+    file_path = options.file_path
+    idx_query = options.idx_query
+
+    # # --- single query
+    # res = generate_metadata_from_hive_query(
+    #     file_path = file_path,
+    #     idx_query = idx_query
+    # )
+
+    # --- multple queries   
+    res = generate_metadata_from_hive_queries(
+        file_path = file_path
+    )
+
+    print(res)
