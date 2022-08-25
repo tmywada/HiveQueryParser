@@ -1,7 +1,8 @@
 # =================================================================================
-#                                Metadata Generator from Hive Queries (MGHQ)
+#                      Metadata Generator from Hive Queries (MGHQ)
 # =================================================================================
 #
+# TODO: Add PyTest
 # TODO: Add description
 # TODO: Implement error handling logic
 # TODO: Add logging feature
@@ -23,7 +24,7 @@ from sqlparse.sql import Comparison
 from sqlparse.sql import Parenthesis
 
 # --- version
-version = 0.0.1
+version = '0.0.1'
 
 class Utilities:
     """
@@ -184,15 +185,15 @@ class Utilities:
         _query = sqlparse.format(query, reindent=True, keyword_case='upper')
 
         # --- parse query
-        statement, = sqlparse.parse(query)
+        stmt, = sqlparse.parse(query)
 
         # --- generate lines from _pprint_tree
-        lines = self.parse_statement(statement)
+        lines = self.parse_statement(stmt)
 
         # --- get metadata and merge with lines
-        res = self.merge_line_and_metadata(statement, lines)
+        res = self.merge_line_and_metadata(stmt, lines)
 
-        return res               
+        return (_query, stmt, res)          
 
     def preprocess_sql_queries(self, queries:str):
         """
@@ -204,13 +205,13 @@ class Utilities:
         for query in sqlparse.split(queries):
 
             # --- process query
-            _res = self.preprocess_sql_query(query)
+            _query, stmt, _res = self.preprocess_sql_query(query)
 
             # --- store result
             res.append(
                 {
-                    'query': query,
-                    'statement': statement,
+                    'query': _query,
+                    'statement': stmt,
                     'metadata_lines': _res
                 }
             )
@@ -835,19 +836,19 @@ def generate_metadata_from_hive_query(file_path:str, idx_query:int):
         idx_query = 0
 
     # --- preprocess
-    _res = parser.preprocess_sql_file(parser.read_sql_file(file_apth))
+    _res = parser.preprocess_sql_queries(parser.read_sql_file(file_path))
 
     # --- parse query (index of "idx_query")
-    stmt = parser.analyse_query(_res[idx_query]['statement'])
+    stmt = _res[idx_query]['statement']
 
     # --- prepare output
     result = {
-            'query': _res[idx]['query'],
+            'query': _res[idx_query]['query'],
             'statement': stmt,
-            'metadata_lines': _res[idx]['metadata_lines'],
+            'metadata_lines': _res[idx_query]['metadata_lines'],
             'metadata_query': parser.analyse_query(stmt)
     }
-    return result
+    return [result]
 
 def generate_metadata_from_hive_queries(file_path:str):
     """
@@ -856,7 +857,7 @@ def generate_metadata_from_hive_queries(file_path:str):
     :param str file_path: SQL file path
     """
     # --- initialization
-    parser  = ParseHiveQuery()
+    parser  = GenerateMetadataHiveQueries()
     results = []
 
     # --- substitute parameter if they are None
@@ -864,18 +865,22 @@ def generate_metadata_from_hive_queries(file_path:str):
         file_path = './data/sample.sql'
 
     # --- preprocess
-    _res = parser.read_sql_file(file_apth)
+    _res = parser.preprocess_sql_queries(parser.read_sql_file(file_path))
 
     # ---
-    for idx in range(len(_res)):
+    for idx_query in range(len(_res)):
 
-        stmt = _res[idx]['statement']
+        print('- - '*10)
+        print(idx)
+        print(_res)
+
+        stmt = _res[idx_query]['statement']
 
         results.append(
             {
-                'query': _res[idx]['query'],
+                'query': _res[idx_query]['query'],
                 'statement': stmt,
-                'metadata_lines': _res[idx]['metadata_lines'],
+                'metadata_lines': _res[idx_query]['metadata_lines'],
                 'metadata_query': parser.analyse_query(stmt)
             }
         )
@@ -892,21 +897,24 @@ if __name__ == '__main__':
     arg_parser.add_argument('--idx_query', type=int, default = 0)
 
     # --- parser arguments
-    options = arg_parser.parser_args()
+    options = arg_parser.parse_args()
 
     # --- extract options
     file_path = options.file_path
     idx_query = options.idx_query
 
-    # # --- single query
-    # res = generate_metadata_from_hive_query(
-    #     file_path = file_path,
-    #     idx_query = idx_query
-    # )
-
-    # --- multple queries   
-    res = generate_metadata_from_hive_queries(
-        file_path = file_path
+    # --- single query
+    res = generate_metadata_from_hive_query(
+        file_path = file_path,
+        idx_query = idx_query
     )
 
-    print(res)
+    # # --- multple queries   
+    # res = generate_metadata_from_hive_queries(
+    #     file_path = file_path
+    # )
+
+    print(res[0]['query'])
+    print('---')
+    print(res[0]['metadata_query'])
+

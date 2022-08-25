@@ -1,4 +1,4 @@
-HiveQueryParser
+MetadataGeneratorHiveQuery
 ======================================
 
 .. |buildstatus|_
@@ -8,27 +8,37 @@ HiveQueryParser
 
 .. docincludebegin
 
-This module extracts metadata of SQL queries including nested sub-queries. 
-
-
-
-
-
-Notes
------------
-This module is designed to cover the following items in Hive SQL queries:
+This module extracts metadata from Hive SQL queries. This module is designed to analyse the following use cases in Hive SQL queries:
 
 * basic SQL commands
-* nested CASE statement
-* temporary table
-* nested sub-queries (i.e., sub-query inside of a subquery)
+* temporary tables
+* nested CASE statemens
+* nested sub-queries
 
-HiveQueryParser uses 
+This module uses  
 `sqlparse <https://github.com/andialbrecht/sqlparse>`_.
 
-Quick Start
+Quick Start (command line)
 -----------
 
+.. code-block:: sh
+   python MetadataGeneratorHiveQueries.py --file_path ./data/sample.sql
+
+This 
+.. code-block:: sh
+   create table schema.table as select col1,col2 from schema_source.table_source;
+
+.. code-block:: sh
+   CREATE TABLE schema.table AS
+   SELECT col1,
+          col2
+   FROM schema_source.table_source;
+
+.. code-block:: sh
+   {'token': 'create', 'type': 'table', 'value': 'schema.table', 'metadta': {'schema_name': 'schema', 'table_name': 'table', 'table_alias': None}}
+   {'token': 'select', 'type': 'column', 'value': 'col1', 'metadata': {'column_name': 'col1'}}
+   {'token': 'select', 'type': 'column', 'value': 'col2', 'metadata': {'column_name': 'col2'}}
+   {'token': 'FROM', 'type': 'table', 'value': 'schema_source.table_source', 'metadata': {'schema_name': 'schema_source', 'table_name': 'table_source', 'table_alias': None}}
 
 .. code-block:: python
 
