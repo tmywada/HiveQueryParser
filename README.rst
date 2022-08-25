@@ -16,7 +16,8 @@ This module extracts metadata from Hive SQL queries. This module is designed to 
 * nested sub-queries
 
 This module uses  
-`sqlparse <https://github.com/andialbrecht/sqlparse>`_.
+`sqlparse <https://github.com/andialbrecht/sqlparse>`_ to parse SQL queries.
+
 
 Quick Start (command line)
 -----------
@@ -25,20 +26,18 @@ Quick Start (command line)
 
    $ python MetadataGeneratorHiveQueries.py --file_path ./data/sample.sql
 
-Raw SQL query::
+`MetadataGeneratorHiveQueires` reads a SQL file and processes queries in the file with `--file_path` option. In this example, the following query is in the SQL file::
 
    create table schema.table as select col1,col2 from schema_source.table_source;
 
-
-Formatted SQL query::
+First, queries without indentation will be re-formatted. The example above is formtted as follows::
 
    CREATE TABLE schema.table AS
    SELECT col1,
           col2
    FROM schema_source.table_source;
 
-
-Extracted metadata::
+Then, this module extract its metadata. This analyzes each keyword and returns dictionaries. The metadata of example above is::
 
    {'token': 'create', 'type': 'table', 'value': 'schema.table', 'metadta': {'schema_name': 'schema', 'table_name': 'table', 'table_alias': None}}
    {'token': 'select', 'type': 'column', 'value': 'col1', 'metadata': {'column_name': 'col1'}}
@@ -46,46 +45,42 @@ Extracted metadata::
    {'token': 'FROM', 'type': 'table', 'value': 'schema_source.table_source', 'metadata': {'schema_name': 'schema_source', 'table_name': 'table_source', 'table_alias': None}}
 
 
+Quick Start (Non-command line)
+-----------
+
 .. code-block:: python
 
-    >>> from HiveQueryParser import ParseHiveQuery
+   >>> from MetadataGeneratorHiveQueries import generate_metadata_from_hive_query
 
-    >>> # read SQL file
-    >>> string_input = read_sql_file('./data/sample.sql')
+   >>> # define parameters
+   >>> file_path = './data/sample.sql'
+   >>> idx_query = 0
 
-    >>> # Split a string containing two SQL statements:
-    >>> raw = 'select * from foo; select * from bar;'
+   >>> # execute function
+   >>> result = generate_metadata_from_hive_query(
+   >>>     file_path = file_path,
+   >>>     idx_query = idx_query
+   >>> )
 
+.. code-block:: python
+   
+   >>> print(result[idx_query]['query'])
 
-    
-   >>> statements = sqlparse.split(raw)
-   >>> statements
-   ['select * from foo;', 'select * from bar;']
+This returns the formatted query::
 
-   >>> # Format the first statement and print it out:
-   >>> first = statements[0]
-   >>> print(sqlparse.format(first, reindent=True, keyword_case='upper'))
-   SELECT *
-   FROM foo;
+   CREATE TABLE schema.table AS
+   SELECT col1,
+          col2
+   FROM schema_source.table_source;
 
-   >>> # Parsing a SQL statement:
-   >>> parsed = sqlparse.parse('select * from foo')[0]
-   >>> parsed.tokens
-   [<DML 'select' at 0x7f22c5e15368>, <Whitespace ' ' at 0x7f22c5e153b0>, <Wildcard '*' … ]
-   >>>
+.. code-block:: python
 
-Links
------
+   >>> for item in result[idx_query]['metadata_query']:
+   >>>     print(item)
 
-Project page
-   https://github.com/tmywada/HiveQueryParser
+This returns metadata of the query::
 
-
-.. |buildstatus| image:: https://github.com/andialbrecht/sqlparse/actions/workflows/python-app.yml/badge.svg
-.. _buildstatus: https://github.com/andialbrecht/sqlparse/actions/workflows/python-app.yml
-.. |coverage| image:: https://codecov.io/gh/andialbrecht/sqlparse/branch/master/graph/badge.svg
-.. _coverage: https://codecov.io/gh/andialbrecht/sqlparse
-.. |docs| image:: https://readthedocs.org/projects/sqlparse/badge/?version=latest
-.. _docs: https://sqlparse.readthedocs.io/en/latest/?badge=latest
-.. |packageversion| image:: https://img.shields.io/pypi/v/sqlparse?color=%2334D058&label=pypi%20package
-.. _packageversion: https://pypi.org/project/sqlparse
+   {'token': 'create', 'type': 'table', 'value': 'schema.table', 'metadta': {'schema_name': 'schema', 'table_name': 'table', 'table_alias': None}}
+   {'token': 'select', 'type': 'column', 'value': 'col1', 'metadata': {'column_name': 'col1'}}
+   {'token': 'select', 'type': 'column', 'value': 'col2', 'metadata': {'column_name': 'col2'}}
+   {'token': 'FROM', 'type': 'table', 'value': 'schema_source.table_source', 'metadata': {'schema_name': 'schema_source', 'table_name': 'table_source', 'table_alias': None}}
