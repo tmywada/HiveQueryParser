@@ -26,11 +26,13 @@ Quick Start (command line)
    $ python MetadataGeneratorHiveQueries.py --file_path ./data/sample.sql
 
 Raw SQL query
+
 ```
 create table schema.table as select col1,col2 from schema_source.table_source;
 ```
 
 Formatted SQL query
+
 ```
 CREATE TABLE schema.table AS
 SELECT col1,
@@ -39,6 +41,7 @@ FROM schema_source.table_source;
 ```
 
 Extracted metadata
+
 ```
 {'token': 'create', 'type': 'table', 'value': 'schema.table', 'metadta': {'schema_name': 'schema', 'table_name': 'table', 'table_alias': None}}
 {'token': 'select', 'type': 'column', 'value': 'col1', 'metadata': {'column_name': 'col1'}}
