@@ -25,29 +25,27 @@ Quick Start (command line)
 
    $ python MetadataGeneratorHiveQueries.py --file_path ./data/sample.sql
 
-Raw SQL query
+Raw SQL query::
 
-``
+
 create table schema.table as select col1,col2 from schema_source.table_source;
-``
 
-Formatted SQL query
 
-``
+Formatted SQL query::
+
 CREATE TABLE schema.table AS
 SELECT col1,
        col2
 FROM schema_source.table_source;
-``
 
-Extracted metadata
 
-``
+Extracted metadata::
+
 {'token': 'create', 'type': 'table', 'value': 'schema.table', 'metadta': {'schema_name': 'schema', 'table_name': 'table', 'table_alias': None}}
 {'token': 'select', 'type': 'column', 'value': 'col1', 'metadata': {'column_name': 'col1'}}
 {'token': 'select', 'type': 'column', 'value': 'col2', 'metadata': {'column_name': 'col2'}}
 {'token': 'FROM', 'type': 'table', 'value': 'schema_source.table_source', 'metadata': {'schema_name': 'schema_source', 'table_name': 'table_source', 'table_alias': None}}
-``
+
 
 .. code-block:: python
 
