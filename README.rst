@@ -22,17 +22,17 @@ Quick Start (command line)
 -----------
 
 .. code-block:: sh
-   python MetadataGeneratorHiveQueries.py --file_path ./data/sample.sql
 
-This 
-.. code-block:: sh
-   create table schema.table as select col1,col2 from schema_source.table_source;
+   $ python MetadataGeneratorHiveQueries.py --file_path ./data/sample.sql
 
-.. code-block:: sh
+`create table schema.table as select col1,col2 from schema_source.table_source;`
+
+`
    CREATE TABLE schema.table AS
    SELECT col1,
           col2
    FROM schema_source.table_source;
+`
 
 .. code-block:: sh
    {'token': 'create', 'type': 'table', 'value': 'schema.table', 'metadta': {'schema_name': 'schema', 'table_name': 'table', 'table_alias': None}}
