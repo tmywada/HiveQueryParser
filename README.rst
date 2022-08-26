@@ -85,5 +85,5 @@ This returns metadata of the query::
    {'token': 'select', 'type': 'column', 'value': 'col2', 'metadata': {'column_name': 'col2'}}
    {'token': 'FROM', 'type': 'table', 'value': 'schema_source.table_source', 'metadata': {'schema_name': 'schema_source', 'table_name': 'table_source', 'table_alias': None}}
 
-More use cases can be found in ::test_MetadataGeneratorHiveQuery.ipynb.
+More use cases can be found in ``test_MetadataGeneratorHiveQuery.ipynb``.
 
