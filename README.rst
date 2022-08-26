@@ -11,7 +11,7 @@ MetadataGeneratorHiveQuery
 This module extracts metadata from Hive SQL queries. This module is designed to analyse the following use cases in Hive SQL queries:
 
 * basic SQL commands
-* temporary tables
+* multiple temporary tables
 * nested CASE statemens
 * nested sub-queries
 
@@ -84,3 +84,5 @@ This returns metadata of the query::
    {'token': 'select', 'type': 'column', 'value': 'col1', 'metadata': {'column_name': 'col1'}}
    {'token': 'select', 'type': 'column', 'value': 'col2', 'metadata': {'column_name': 'col2'}}
    {'token': 'FROM', 'type': 'table', 'value': 'schema_source.table_source', 'metadata': {'schema_name': 'schema_source', 'table_name': 'table_source', 'table_alias': None}}
+
+More use cases can be found in `test_MetadataGeneratorHiveQuery.ipynb`.

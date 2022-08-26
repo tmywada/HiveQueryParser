@@ -1,11 +1,6 @@
 # =================================================================================
-#                      Metadata Generator from Hive Queries (MGHQ)
+#                      Metadata Generator from Hive Query (MGHQ)
 # =================================================================================
-#
-# TODO: Add PyTest
-# TODO: Add description
-# TODO: Implement error handling logic
-# TODO: Add logging feature
 #
 import sqlparse
 from io import StringIO
@@ -22,6 +17,7 @@ from sqlparse.sql import IdentifierList
 from sqlparse.sql import Identifier
 from sqlparse.sql import Comparison
 from sqlparse.sql import Parenthesis
+from sqlparse.sql import Case
 
 # --- version
 version = '0.0.1'
@@ -424,33 +420,146 @@ class Processes(Utilities):
         }
         return res
 
+    def retrieve_temporary_table_metadata(self, token:sqlparse.sql.Token):
+        """
+        """
+        # --- get alias
+        table_alias = token.get_name()
+
+        # --- process inside of Parenthesis (last token)
+        _query = self.cleanup_string(token.tokens[-1].value[1:-1])
+        _query += ';'
+
+        _statement, = sqlparse.parse(_query)
+
+        parser_sub = GenerateMetadataHiveQueries()
+        res_tmp_table = parser_sub.analyse_query(_statement)
+
+        res = {
+                'token': 'with',
+                'type':  'temporary table',
+                'table_alias': table_alias,
+                'value': res_tmp_table
+        }
+        return res      
+
+    def retrieve_metadata_case(self, token:sqlparse.sql.Token):
+        """
+        """
+        # --- parse case statement 
+        #     [
+        #       ( [key, condition], [key, value] ),  <--- when, then
+        #       ( None, [key, value] )               <--- else
+        #     ]
+
+        # --- initialization
+        _res = token.get_cases(skip_ws = True)
+        is_nested = False
+        res = []
+
+        # --- split dictionaries (when&then and else)
+        tmp_when_then = _res[0]
+        tmp_else      = _res[1]    
+
+        # --- when
+        for _token in tmp_when_then[0]:
+            if _token.ttype is Keyword:
+                continue
+            res.append(
+                {
+                    'when': _token.value
+                }
+            )
+
+        # --- then
+        res.append(
+            {
+                'then': tmp_when_then[1][1].value
+            }
+        )
+        # --- else
+        if isinstance(tmp_else[1][1], Case):
+            res.append(
+                {
+                    'else': 'nested_case'
+                }
+            )
+            is_nested = True
+            token_nested = tmp_else[1][1]
+        else:
+            res.append(
+                {
+                    'else': tmp_else[1][1].value
+                }
+            )
+            token_nested = None
+
+        return (is_nested, res, token_nested)      
+
+    def process_identifier_select(self, token:sqlparse.sql.Token):
+        """
+        """
+        # --- case
+        if isinstance(token.tokens[0], Case):
+
+            _res_case = []
+
+            _is_nested, tmp, token_nested = self.retrieve_metadata_case(token.tokens[0])
+
+            if _is_nested:
+                is_nested = True
+            else:
+                is_nested = False
+
+            # --- column name
+            tmp.append(
+                {
+                    'column_name': token.get_name()
+                }
+            )
+            _res_case.extend(tmp)
+
+            # --- nested
+            while _is_nested:
+                _is_nested, tmp, token_nested = self.retrieve_metadata_case(token_nested)
+                _res_case.append(tmp)
+
+            res = {
+                'token': 'select',
+                'type':  'case'
+            }
+
+            if is_nested:
+                res['is_nested'] = True
+            else:
+                res['is_nested'] = False
+
+            res['metadta'] = _res_case
+
+        # --- others
+        else:
+            res = {
+                'token': 'select',
+                'type':  'column',
+                'value': self.cleanup_string(token.value),
+                'metadata': self.retrieve_column_metadata_in_select(token)
+            }
+        return res   
+
     def process_select(self, token:sqlparse.sql.Token):
         """
         """
 
         res = []
+
         if isinstance(token, IdentifierList):
             for identifier in token.get_identifiers():
 
-                _res = {
-                    'token': 'select',
-                    'type':  'column',
-                    'value': self.cleanup_string(identifier.value),
-                    'metadata': self.retrieve_column_metadata_in_select(identifier)
-                }
-
-                res.append( _res )
+                res.append( self.process_identifier_select(identifier) )
 
         elif isinstance(token, Identifier):
-
-            _res = {
-                'token': 'select',
-                'type':  'column',
-                'value': self.cleanup_string(identifier.value),
-                'metadata': self.retrieve_column_metadata_in_select(token)
-            }
-
-            res.append( _res )
+ 
+            res.append( self.process_identifier_select(token) )
 
         return res
 
@@ -489,8 +598,8 @@ class Processes(Utilities):
 
                 _statement, = sqlparse.parse(_query)
 
-                parser_sub = ParseHiveQuery()
-                res_sub = parser_sub.parse_query(_statement)
+                parser_sub = GenerateMetadataHiveQueries()
+                res_sub = parser_sub.analyse_query(_statement)
 
                 _res = {
                     'token': 'FROM',
@@ -530,8 +639,8 @@ class Processes(Utilities):
 
             _statement, = sqlparse.parse(_query)
 
-            parser_sub = ParseHiveQuery()
-            res_sub = parser_sub.parse_query(_statement)
+            parser_sub = GenerateMetadataHiveQueries()
+            res_sub = parser_sub.analyse_query(_statement)
 
             _res = {
                 'token': 'FROM',
@@ -675,26 +784,12 @@ class Processes(Utilities):
         res = []
         if isinstance(token, Identifier):
 
-            # --- get alias
-            table_alias = token.get_name()
+            res.append(self.retrieve_temporary_table_metadata(token))
 
-            # --- process inside of Parenthesis (last token)
-            _query = self.cleanup_string(token.tokens[-1].value[1:-1])
-            _query += ';'
+        elif isinstance(token, IdentifierList):
+            for identifier in token.get_identifiers():
 
-            _statement, = sqlparse.parse(_query)
-
-            parser_sub = ParseHiveQuery()
-            res_tmp_table = parser_sub.parse_query(_statement)
-
-            res.append(
-                {
-                    'token': 'with',
-                    'type':  'temporary table',
-                    'table_alias': table_alias,
-                    'value': res_tmp_table
-                }
-            )
+                res.append( self.retrieve_temporary_table_metadata(token) )
 
         return res
 
@@ -721,6 +816,10 @@ class GenerateMetadataHiveQueries(Processes):
     """
     def __init__(self):
         """
+        Need to be sync
+        - tokens listed in `tokens_considered`
+        - processes in the `Processes` class
+        - if statement in `analyse_token` 
         """
         # --- define tokens
         self.tokens_considered = [
@@ -870,10 +969,6 @@ def generate_metadata_from_hive_queries(file_path:str):
     # ---
     for idx_query in range(len(_res)):
 
-        print('- - '*10)
-        print(idx)
-        print(_res)
-
         stmt = _res[idx_query]['statement']
 
         results.append(
@@ -899,14 +994,10 @@ if __name__ == '__main__':
     # --- parser arguments
     options = arg_parser.parse_args()
 
-    # --- extract options
-    file_path = options.file_path
-    idx_query = options.idx_query
-
     # --- single query
     res = generate_metadata_from_hive_query(
-        file_path = file_path,
-        idx_query = idx_query
+        file_path = options.file_path,
+        idx_query = options.idx_query
     )
 
     # # --- multple queries   

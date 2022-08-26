@@ -6,10 +6,10 @@ create table schema.table as
 select
     a.col1,
     COALESCE(a.col2, 0) as col2_coalesce,
-    NVL(a.col3, 0) as col3_nvl    
+    NVL(a.col3, 0) as col3_nvl,
     CASE
         WHEN a.col3 == b.col3
-        THNE 1
+        THEN 1
         ELSE 0
     END AS col3_comaprison_ind,
     b.col4 AS col4_renamed,
