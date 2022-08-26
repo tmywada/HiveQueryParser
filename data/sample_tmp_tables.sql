@@ -31,7 +31,7 @@ select
     B.col4,
     CASE
         WHEN b.col5 = a.col4
-        THNE 1
+        THEN 1
         ELSE 0
     END AS col5,
     COALESCE(b.col6, 0) as col6_fill_na
