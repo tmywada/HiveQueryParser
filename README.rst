@@ -45,7 +45,7 @@ Then, this module extract its metadata. This analyzes each keyword and returns d
    {'token': 'FROM', 'type': 'table', 'value': 'schema_source.table_source', 'metadata': {'schema_name': 'schema_source', 'table_name': 'table_source', 'table_alias': None}}
 
 
-Quick Start (Non-command line)
+Quick Start (non-command line)
 -----------
 
 .. code-block:: python
