@@ -18,6 +18,7 @@ from sqlparse.sql import Identifier
 from sqlparse.sql import Comparison
 from sqlparse.sql import Parenthesis
 from sqlparse.sql import Case
+from sqlparse.sql import Having
 
 # --- version
 version = '0.0.1'
@@ -303,6 +304,12 @@ class Processes(Utilities):
             self.reset_switchs()
             self.switchs[idx] = True
             return
+
+        if token.ttype is Keyword and token.value.lower() == 'having':
+            idx = self.tokens_considered.index('having')
+            self.reset_switchs()
+            self.switchs[idx] = True
+            return           
 
     def retrieve_column_metadata_in_select(self, token:sqlparse.sql.Token):
         """
@@ -711,23 +718,22 @@ class Processes(Utilities):
         """
         """
         res = []
-        for _token in token:
-            if isinstance(_token, Comparison):
-                res.append(
-                    {
-                        'token': 'WHERE',
-                        'type':  'comparison',
-                        'value': self.cleanup_string(_token.value)
-                    }
-                )
-            elif isinstance(_token, Parenthesis):
-                res.append(
-                    {
-                        'token': 'WHERE',
-                        'type':  'parenthesis',
-                        'value': self.cleanup_string(_token.value)
-                    }
-                )
+        if isinstance(token, Comparison):
+            res.append(
+                {
+                    'token': 'WHERE',
+                    'type':  'comparison',
+                    'value': self.cleanup_string(token.value)
+                }
+            )
+        elif isinstance(token, Parenthesis):
+            res.append(
+                {
+                    'token': 'WHERE',
+                    'type':  'parenthesis',
+                    'value': self.cleanup_string(token.value)
+                }
+            )
         return res            
 
     def process_inner_join(self, token:sqlparse.sql.Token):
@@ -810,6 +816,21 @@ class Processes(Utilities):
 
         return res
 
+    def process_having(self, token:sqlparse.sql.Token):
+        """
+        Not yet "col IS NOT NULL"
+        """
+        res = []
+        if isinstance(token, Comparison):
+            res.append(
+                {
+                    'token': 'having',
+                    'type':  'comparison',
+                    'value': self.cleanup_string(token.value)
+                }
+            )
+        return res   
+
 class GenerateMetadataHiveQueries(Processes):
     """
     This class contains a wrapper functions.
@@ -826,6 +847,7 @@ class GenerateMetadataHiveQueries(Processes):
             'create',
             'from',
             'group by',
+            'having',
             'join',
             'on',
             'order by',
@@ -895,6 +917,11 @@ class GenerateMetadataHiveQueries(Processes):
         if self.switchs[self.tokens_considered.index('create')]:
             _res.extend(self.process_create(token))
             return _res  
+
+        # --- having
+        if self.switchs[self.tokens_considered.index('having')]:
+            _res.extend(self.process_having(token))
+            return _res          
 
         return _res
 
