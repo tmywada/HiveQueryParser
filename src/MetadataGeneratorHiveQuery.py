@@ -21,12 +21,43 @@ from sqlparse.sql import Case
 from sqlparse.sql import Having
 
 # --- version
-version = '0.0.1'
+version = '0.0.2'
 
 class Utilities:
     """
     This class containes utility functions.
     """
+    def __init__(self):
+        """
+        Need to be sync
+        - tokens listed in `tokens_considered`
+        - processes in the `Processes` class
+        - if statement in `analyse_token` 
+        """
+        # --- define tokens
+        self.tokens_considered = [
+            'create',
+            'from',
+            'group by',
+            'having',
+            'join',
+            'on',
+            'order by',
+            'outer join',
+            'select',
+            'where',
+            'with'
+        ]
+
+        self.num_tokens = len(self.tokens_considered)
+
+        # --- initialization
+        self.switchs = [False] * len( self.tokens_considered )
+
+        # --- exceptions
+        self.is_partition = False
+        self.is_if = False
+
     def read_sql_file(self, file_path:str):
         """
         Read Hive SQL file. Add additional conditions if they are needed.
@@ -60,6 +91,14 @@ class Utilities:
                 # --- additioanl comment at lines (SELECT -- this is comment)
                 elif '--' in line:
                     line = line.split('--')[0].strip()
+
+                # --- add space after and before "over" (otherwise over is not recognized as "Keyword")
+                elif ')over(' in line.lower():
+                    line = line.lower().replace(')over(', ') over (')
+                elif ')over' in line.lower():
+                    line = line.lower().replace(')over', ') over')
+                elif 'over(' in line.lower():
+                    line = line.lower().replace('over(', 'over (')
 
                 # ==== add condition here ====== 
                 # elif ****
@@ -218,7 +257,9 @@ class Utilities:
         """
         Reset switchs
         """
-        self.switchs = [False] * self.num_tokens 
+        self.switchs = [False] * self.num_tokens
+        self.is_partition = False
+        self.is_if = False
 
     def cleanup_string(self, string:str):
         """
@@ -237,80 +278,10 @@ class Utilities:
 
         return res
 
-class Processes(Utilities):
+class Retrievals(Utilities):
     """
-    This class containes processes for each token that needs to process differently.
+    This class contains retrieval processes using in Processes class.
     """
-    def scan_known_tokens(self, token:sqlparse.sql.Token):
-        """
-        select, from, grouby, ordergby, with, join, where, on
-        """
-        if token.ttype is DML and token.value.lower() == 'select':
-            idx = self.tokens_considered.index('select')
-            self.reset_switchs()
-            self.switchs[idx] = True
-            return
-
-        if token.ttype is Keyword and token.value.lower() == "from":
-            idx = self.tokens_considered.index('from')
-            self.reset_switchs()
-            self.switchs[idx] = True            
-            return
-
-        if token.ttype is Keyword and token.value.lower() == "group by":
-            idx = self.tokens_considered.index('group by')
-            self.reset_switchs()
-            self.switchs[idx] = True   
-            return
-
-        if token.ttype is Keyword and token.value.lower() == "order by":
-            idx = self.tokens_considered.index('order by')
-            self.reset_switchs()
-            self.switchs[idx] = True         
-            return
-
-        if token.ttype is CTE and token.value.lower() == "with":
-            idx = self.tokens_considered.index('with')
-            self.reset_switchs()
-            self.switchs[idx] = True
-            return
-
-        if token.ttype is Keyword and token.value.lower() in ['inner join', 'join']:
-            idx = self.tokens_considered.index('join')
-            self.reset_switchs()
-            self.switchs[idx] = True            
-            return
-
-        if token.ttype is Keyword and token.value.lower() in ['outer join', 'outer left join']:
-            idx = self.tokens_considered.index('outer join')
-            self.reset_switchs()
-            self.switchs[idx] = True
-            return     
-
-        if token.ttype is Keyword and token.value.lower() == 'on':
-            idx = self.tokens_considered.index('on')
-            self.reset_switchs()
-            self.switchs[idx] = True
-            return
-
-        if isinstance(token, Where):
-            idx = self.tokens_considered.index('where')
-            self.reset_switchs()
-            self.switchs[idx] = True
-            return
-
-        if token.ttype is DDL and token.value.lower() == 'create':
-            idx = self.tokens_considered.index('create')
-            self.reset_switchs()
-            self.switchs[idx] = True
-            return
-
-        if token.ttype is Keyword and token.value.lower() == 'having':
-            idx = self.tokens_considered.index('having')
-            self.reset_switchs()
-            self.switchs[idx] = True
-            return           
-
     def retrieve_column_metadata_in_select(self, token:sqlparse.sql.Token):
         """
         covering various cases
@@ -321,8 +292,18 @@ class Processes(Utilities):
         parent_name = token.get_parent_name()
         alias = token.get_alias()
 
+        # --- Function (lag, row_number)
+        if isinstance(token, Function):
+
+            #TODO reuqred additional treatment to extract info
+            _res = {
+                'function': token.get_name(),
+                'value': token.value,
+                'is_function': True
+            }                  
+
         # --- Function (sum, count, nvl, coalesce) 
-        if isinstance(token.token_first(), Function):
+        elif isinstance(token.token_first(), Function):
 
             #TODO reuqred additional treatment to extract info
             _res = {
@@ -343,6 +324,13 @@ class Processes(Utilities):
                 'column_name': column_name,
                 'table_alias': parent_name
             }
+
+        # --- partition (inside of brackets)
+        elif self.is_partition:
+            _res = {
+                'column_name': column_name,
+                'is_partition_condition': True
+            }  
 
         # --- Operation, Float, Integer, etc. -> "is_others"
         elif parent_name == None:
@@ -503,11 +491,68 @@ class Processes(Utilities):
 
         return (is_nested, res, token_nested)      
 
+class Processes(Utilities):
+    """
+    This class containes processes for each token that needs to process differently.
+    """
+    def process_select(self, token:sqlparse.sql.Token):
+        """
+        """
+        # --- initialization
+        res = []
+
+        # --- IdenfitierList
+        if isinstance(token, IdentifierList):
+
+            # --- simple column
+            if self.is_partition == False and self.is_if == False:
+                for identifier in token.get_identifiers():
+                    res.append( self.process_identifier_select(identifier) )
+
+            # --- partition
+            elif self.is_partition:
+
+                # --- get_identifiers -> 
+                try:
+                    for i,identifier in enumerate(token.get_identifiers()):
+                        res.append( self.process_identifier_select(identifier) )
+
+                # --- 
+                except:                  
+                    res.append( self.process_identifierlist_partition(token))
+
+            elif self.is_if:
+                res.extend( self.process_if_statement(token))                
+
+        elif isinstance(token, Identifier):
+
+            if self.is_partition == False and self.is_if == False:
+                res.append( self.process_identifier_select(token) )
+
+            elif self.is_if:
+                res.extend( self.process_if_statement(token))                  
+
+            # --- may not be neede
+            # elif self.is_partition:
+            #     res.append( self.process_identifierlist_partition(token))
+
+        return res
+
     def process_identifier_select(self, token:sqlparse.sql.Token):
         """
         """
+        # --- if
+        if token.ttype is Keyword and token.value.lower() == 'if':
+            self.is_if = True
+            res = {
+                'token': 'select',
+                'type':  'column',
+                'value': self.cleanup_string(token.value),
+                'is_function': True
+            }
+
         # --- case
-        if isinstance(token.tokens[0], Case):
+        elif isinstance(token.tokens[0], Case):
 
             _res_case = []
 
@@ -553,21 +598,72 @@ class Processes(Utilities):
             }
         return res   
 
-    def process_select(self, token:sqlparse.sql.Token):
+    def process_identifierlist_partition(self,token:sqlparse.sql.Token):
         """
+        TODO: add parse in token (get "order by", "partition", etc.)
         """
+        res = {
+            'token': 'select',
+            'type':  'partition',
+            'value': self.cleanup_string(token.value)
+        }
+        return res
 
+    def process_identifier_partition(self,token:sqlparse.sql.Token):
+        """
+        TODO: add parse in token (get "order by", "partition", etc.)
+        """
+        res = {
+            'token': 'select',
+            'type':  'column',
+            'value': self.cleanup_string(token.value),
+            'metadata': self.retrieve_column_metadata_in_select(token)
+        }
+        return res
+
+    def process_if_statement(self,token:sqlparse.sql.Token):
+        """
+        TODO: add parse in token
+        """
+        # --- initialization 
         res = []
 
-        if isinstance(token, IdentifierList):
-            for identifier in token.get_identifiers():
+        # --- get value
+        value = self.cleanup_string(token.value)
 
-                res.append( self.process_identifier_select(identifier) )
+        # --- string involves next "if" ( aaa ) AS bb, if"
+        if value.rstrip().lower().endswith((",if", ' if')):
 
-        elif isinstance(token, Identifier):
- 
-            res.append( self.process_identifier_select(token) )
+            # --- split value by comma
+            tmp = value.split(',')
 
+            first_half  = ','.join(tmp[:-1]).strip() # until last "if"
+            second_half = tmp[-1].strip()    # this is "if"
+
+            # --- append first
+            res.append(
+                {
+                    'token': 'select',
+                    'type':  'if',
+                    'value': first_half
+                }
+            )
+
+            # --- append second
+            res.append(
+                {
+                    'token': 'select',
+                    'type':  'if'
+                }
+            )            
+        else:
+            res.append(
+                {
+                    'token': 'select',
+                    'type':  'if',
+                    'value': value
+                }
+            )
         return res
 
     def process_from(self, token:sqlparse.sql.Token):
@@ -835,32 +931,76 @@ class GenerateMetadataHiveQueries(Processes):
     """
     This class contains a wrapper functions.
     """
-    def __init__(self):
-        """
-        Need to be sync
-        - tokens listed in `tokens_considered`
-        - processes in the `Processes` class
-        - if statement in `analyse_token` 
-        """
-        # --- define tokens
-        self.tokens_considered = [
-            'create',
-            'from',
-            'group by',
-            'having',
-            'join',
-            'on',
-            'order by',
-            'outer join',
-            'select',
-            'where',
-            'with'
-        ]
 
-        self.num_tokens = len(self.tokens_considered)
+    def mark_known_tokens(self, token:sqlparse.sql.Token):
+        """
+        """
+        # --- specific ttype
+        if token.ttype is DML and token.value.lower() == 'select':
+            idx = self.tokens_considered.index('select')
+            self.reset_switchs()
+            self.switchs[idx] = True
 
-        # --- initialization
-        self.switchs = [False] * len( self.tokens_considered )
+        elif token.ttype is CTE and token.value.lower() == "with":
+            idx = self.tokens_considered.index('with')
+            self.reset_switchs()
+            self.switchs[idx] = True
+
+        elif token.ttype is DDL and token.value.lower() == 'create':
+            idx = self.tokens_considered.index('create')
+            self.reset_switchs()
+            self.switchs[idx] = True
+
+        # --- Keyword
+        elif token.ttype is Keyword and token.value.lower() == "from":
+            idx = self.tokens_considered.index('from')
+            self.reset_switchs()
+            self.switchs[idx] = True            
+
+        elif token.ttype is Keyword and token.value.lower() == "group by":
+            idx = self.tokens_considered.index('group by')
+            self.reset_switchs()
+            self.switchs[idx] = True   
+
+        elif token.ttype is Keyword and token.value.lower() == "order by":
+            idx = self.tokens_considered.index('order by')
+            self.reset_switchs()
+            self.switchs[idx] = True         
+
+        elif token.ttype is Keyword and token.value.lower() == 'on':
+            idx = self.tokens_considered.index('on')
+            self.reset_switchs()
+            self.switchs[idx] = True
+
+        elif token.ttype is Keyword and token.value.lower() == 'having':
+            idx = self.tokens_considered.index('having')
+            self.reset_switchs()
+            self.switchs[idx] = True
+
+        # --- join
+        elif token.ttype is Keyword and token.value.lower() in ['inner join', 'join']:
+            idx = self.tokens_considered.index('join')
+            self.reset_switchs()
+            self.switchs[idx] = True            
+
+        elif token.ttype is Keyword and token.value.lower() in ['outer join', 'outer left join']:
+            idx = self.tokens_considered.index('outer join')
+            self.reset_switchs()
+            self.switchs[idx] = True  
+
+        # --- where
+        elif isinstance(token, Where):
+            idx = self.tokens_considered.index('where')
+            self.reset_switchs()
+            self.switchs[idx] = True
+
+        # --- over in partition/lag
+        elif token.ttype is Keyword and token.value.lower() == 'over':
+            self.is_partition = True 
+
+        # # --- if (may be not here!!)
+        # if token.ttype is Keyword and token.value.lower() == 'if':
+        #     self.is_if = True 
 
     def analyse_token(self, token:sqlparse.sql.Token):
         """
@@ -937,14 +1077,14 @@ class GenerateMetadataHiveQueries(Processes):
             idx += 1
             token = tokens[idx]
 
-            # --- scan token
-            self.scan_known_tokens(token)
+            # --- mark known token
+            self.mark_known_tokens(token)
 
             res.extend( self.analyse_token(token) )
 
         return res
 
-def generate_metadata_from_hive_query(file_path:str, idx_query:int):
+def generate_metadata_from_hive_query(file_path:str):
     """
     Generate metadata from a hive query.
 
@@ -964,8 +1104,13 @@ def generate_metadata_from_hive_query(file_path:str, idx_query:int):
     # --- preprocess
     _res = parser.preprocess_sql_queries(parser.read_sql_file(file_path))
 
+    # --- more queries?
+    if len(_res) > 1:
+
+
+
     # --- parse query (index of "idx_query")
-    stmt = _res[idx_query]['statement']
+    stmt = _res[0]['statement']
 
     # --- prepare output
     result = {
