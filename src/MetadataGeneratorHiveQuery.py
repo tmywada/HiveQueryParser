@@ -292,7 +292,7 @@ class Retrievals(Utilities):
         parent_name = token.get_parent_name()
         alias = token.get_alias()
 
-        # --- Function (lag, row_number)
+        # --- Special function (lag, row_number)
         if isinstance(token, Function):
 
             #TODO reuqred additional treatment to extract info
@@ -302,7 +302,7 @@ class Retrievals(Utilities):
                 'is_function': True
             }                  
 
-        # --- Function (sum, count, nvl, coalesce) 
+        # --- General function (sum, count, nvl, coalesce) 
         elif isinstance(token.token_first(), Function):
 
             #TODO reuqred additional treatment to extract info
@@ -313,6 +313,7 @@ class Retrievals(Utilities):
 
         # --- column name without table alias (e.g., col1)
         elif parent_name == alias == None:
+          
             if column_name == column_name_before_rename:
                 _res = {
                     'column_name': column_name
@@ -320,6 +321,7 @@ class Retrievals(Utilities):
 
         # --- column name with alias (e.g., a.col1)
         elif alias == None:
+
             _res = {
                 'column_name': column_name,
                 'table_alias': parent_name
@@ -327,26 +329,62 @@ class Retrievals(Utilities):
 
         # --- partition (inside of brackets)
         elif self.is_partition:
+          
             _res = {
                 'column_name': column_name,
                 'is_partition_condition': True
-            }  
+            }
 
-        # --- Operation, Float, Integer, etc. -> "is_others"
-        elif parent_name == None:
-            if alias == column_name == column_name_before_rename:
+        # ---
+        elif column_name == alias:
+
+            # --- Operation, Float, Integer, etc. -> "is_others"
+            if column_name == column_name_before_rename:
+          
+                if parent_name == None:
+                    _res = {
+                        'column_name': column_name,
+                        'is_others': True
+                    }
+
+            # --- renamed (e.g., col1 as col1_renamed)
+            elif parent_name == None:
+        
                 _res = {
                     'column_name': column_name,
-                    'is_others': True
+                    'column_name_before_rename': column_name_before_rename
                 }
 
-        # --- renamed (e.g., a.col1 as col1_renamed)
-        elif column_name == alias:
-            _res = {
-                'column_name': column_name,
-                'column_name_before_rename': column_name_before_rename,
-                'table_alias': parent_name
-            }
+            # --- renamed (e.g., a.col1 as col1_renamed)
+            else:
+        
+                _res = {
+                    'column_name': column_name,
+                    'column_name_before_rename': column_name_before_rename,
+                    'table_alias': parent_name
+                }
+
+        # # --- Operation, Float, Integer, etc. -> "is_others"
+        # elif parent_name == None:
+
+        #     print('here6')            
+        #     if alias == column_name == column_name_before_rename:
+        #         _res = {
+        #             'column_name': column_name,
+        #             'is_others': True
+        #         }
+
+        # # --- renamed (e.g., a.col1 as col1_renamed)
+        # elif column_name == alias:
+
+        #     print('here7')            
+        #     _res = {
+        #         'column_name': column_name,
+        #         'column_name_before_rename': column_name_before_rename,
+        #         'table_alias': parent_name
+        #     }
+
+
 
         return _res
 
@@ -491,7 +529,7 @@ class Retrievals(Utilities):
 
         return (is_nested, res, token_nested)      
 
-class Processes(Utilities):
+class Processes(Retrievals):
     """
     This class containes processes for each token that needs to process differently.
     """
@@ -1104,8 +1142,8 @@ def generate_metadata_from_hive_query(file_path:str):
     # --- preprocess
     _res = parser.preprocess_sql_queries(parser.read_sql_file(file_path))
 
-    # --- more queries?
-    if len(_res) > 1:
+    # # --- more queries?
+    # if len(_res) > 1:
 
 
 
