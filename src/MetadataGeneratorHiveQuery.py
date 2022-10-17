@@ -7,6 +7,7 @@ from io import StringIO
 import re
 import argparse
 from pathlib import Path
+from collections import defaultdict
 from sqlparse.tokens import Keyword
 from sqlparse.tokens import DML
 from sqlparse.tokens import CTE
@@ -277,6 +278,133 @@ class Utilities:
         res = re.sub(pattern, ' ', tmp.strip())
 
         return res
+
+    def is_over_in_tokens(self, statement:sqlparse.sql.Statement):
+        """
+        """
+        for token in statement:        
+            if token.ttype == Keyword and token.value.lower() == 'over':
+                return True  
+        return False
+
+    def retrieve_indices_over(self, statement:sqlparse.sql.Statement):
+        """
+        """
+        # --- initialization
+        button = False
+        res = defaultdict(list)
+        
+        # --- forward
+        for i,token in enumerate(statement):
+            
+            # --- "over"
+            if token.ttype == Keyword and token.value.lower() == 'over':
+                button = True
+                idx_button = i
+                continue
+                
+            # --- previously seen "over"
+            if button:
+                _res = {}
+                
+                if isinstance(token, Identifier):
+                    _res['idx_context'] = i
+                    _res['is_IdentifierList'] = False
+                    button = False
+                    
+                elif isinstance(token, IdentifierList):
+                    _res['idx_context'] = i
+                    _res['is_IdentifierList'] = True
+                    button = False
+                    
+                elif isinstance(token, Parenthesis):
+                    _res['idx_context'] = i
+                    _res['is_IdentifierList'] = False
+                    button = False               
+                    
+                # --- this token would be whitespace                
+                else:
+                    continue
+                    
+                # --- apppend only Identifier or IdentifierList                
+                res[idx_button].append(_res)
+                
+        # --- backward
+        for i,token in enumerate(statement[::-1]):
+            
+            # --- convert from backward intex to forward index
+            j = len(statement.tokens) - i - 1
+            
+            # --- "target"
+            if token.ttype == Keyword and token.value.lower() == 'over':
+                button = True
+                idx_button = j
+                continue
+                
+            # --- previously seen "over"
+            if button:
+                _res = {}
+                
+                if isinstance(token, Identifier):
+                    _res['idx_function'] = j
+                    _res['is_IdentifierList'] = False
+                    button = False
+                    
+                elif isinstance(token, IdentifierList):
+                    _res['idx_function'] = j
+                    _res['is_IdentifierList'] = True
+                    button = False
+                    
+                # --- this token would be whitespace                
+                else:
+                    continue
+                    
+                # --- apppend only Identifier or IdentifierList                
+                res[idx_button].append(_res)
+                
+        return dict(res)
+
+for idx_over in res:
+    
+    _res = res[idx_over]
+    
+    print('- - '*19)
+    
+    for item in _res:
+        
+        if 'idx_function' in item:
+            
+            if item['is_IdentifierList']:      
+                token_function = tokens[ item['idx_function'] ].tokens[-1]
+            else:
+                token_function = tokens[ item['idx_function'] ] 
+                
+            print(f'function_name: {token_function.get_name()}')
+            
+            for tmp in token_function.get_parameters():
+                print(f'parameter: {tmp.value}')
+            
+                
+        elif 'idx_context' in item:
+            
+#             print(tokens[ item['idx_context'] ])
+#             print('-. -. '*10)
+#             print(tokens[ item['idx_context'] ].tokens)
+#             print('=. =. '*10)
+            
+            if item['is_IdentifierList']:
+                token_context = tokens[ item['idx_context'] ].tokens[0]
+            else:
+                token_context = tokens[ item['idx_context'] ]  
+                
+            alias = token_context.get_alias()
+            
+            print(f'alias: {alias}')
+
+            if alias == None:
+                print(token_context.value)
+            else:
+                print(token_context.tokens[0].value)
 
 class Retrievals(Utilities):
     """
