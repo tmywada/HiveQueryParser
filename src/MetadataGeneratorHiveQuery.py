@@ -1347,3 +1347,167 @@ if __name__ == '__main__':
     print('---')
     print(res[0]['metadata_query'])
 
+# ==============================
+# WIP
+# ==============================
+query = """select
+cast(a as bigint) as b
+from
+table"""
+
+def is_wildcard(token:sqlparse.sql.Identifier):
+    """
+    """
+    # --- considered: a.*
+    try:
+        if token.is_wildcard():
+            print(1)
+            return True
+        else:
+            pass
+    except:
+        pass
+
+    # --- considered: *
+    try:
+        if token.ttype == Wildcard:
+            print(2)
+            return True
+        else:
+            pass
+    except:
+        pass
+
+    return False
+
+def retrieve_idenfitier_metadata_select(token:sqlparse.sql.Identifier):
+    """
+    """
+    # --- initialization
+    res = dict()
+
+    # --- alias
+    try:
+        _res = token.has_alias()
+    except:
+        _res = False
+    res['has_alias'] = _res
+
+    # --- keyword
+    try:
+        _res = token.is_keyword
+    except:
+        _res = False
+    res['is_keyword'] = _res
+
+    # --- wildcard
+    res['is_wildcard'] = is_wildcard(token)
+
+    return res
+
+def is_known_token(token:sqlparse.sql.Token):
+    """
+    """
+    # --- initialization
+    res = dict()
+
+    # --- Number (Integer and Float)
+    if token.ttype in Token.Number:
+        _res = True
+    else:
+        _res = False
+    res['is_number'] = _res
+
+    # --- String (Single)
+    if token.ttype in Token.String:
+        _res = True
+    else:
+        _res = False
+    res['is_string'] = _res
+
+    # --- Case
+    if isinstance(token, Case):
+        _res = True
+    else:
+        _res = False
+    res['is_case'] = _res
+
+    # --- Function
+    if isinstance(token, Function):
+        _res = True
+    else:
+        _res = False
+    res['is_function'] = _res
+
+    # --- Sanitary check (more than one True)
+    if sum(res.values()) > 1:
+        print(f'Error: more than one True in "is_known_token"')
+
+    return res
+
+
+
+
+if isinstance(token, Identifier):
+
+    # --- metadata
+    tmp_meta = retrieve_idenfitier_metadata_select(token)
+    
+    # --- with alias    
+    if tmp_meta['has_alias']:
+        
+        name_alias = token.get_alias()
+        
+        # --- load only the first token
+        _token = token.token_first()
+        _tmp = is_known_token(_token)
+        
+        # --- a as b / a.b as c
+        if sum(_tmp.values()) == 0:
+            
+            # --- column name
+            name = _token.get_real_name()
+            
+            # --- table alias
+            try:
+                name_parent = _token.get_parent_name()
+            except:
+                name_parent = None
+            
+            print(name_parent, name, name_alias)
+            
+        # --- main logic
+        else:
+            
+            key = [k for k,v in _tmp.items() if v == True][0]
+            print(f'key is: {key}')
+        
+    # --- a or a.b        
+    else:
+        # --- column name
+        name = token.get_real_name()
+        
+        # --- table alias
+        try:
+            name_parent = token.get_parent_name()
+        except:
+            name_parent = None 
+            
+        print(name_parent, name)
+        
+# ---
+else:
+    tmp = is_known_token(token)
+
+    if sum(tmp.values()) == 1:
+        key = [k for k,v in tmp.items() if v == True][0]
+        print(f'key is: {key}')
+        
+    elif sum(tmp.values()) == 0:
+        print('this is unknown token')
+        
+    elif sum(tmp.values()) > 1:
+        print('logic has issue. more than one known token')
+        
+    else:
+        print('unkonwn error')
